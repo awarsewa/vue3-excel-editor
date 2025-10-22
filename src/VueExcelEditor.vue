@@ -159,7 +159,7 @@
         <!-- Editor Square -->
         <div v-show="focused" ref="inputSquare" class="input-square" @mousedown="inputSquareClick">
           <div style="position: relative; height: 100%; padding: 2px 2px 1px">
-            <div class="rb-square" />
+            <div class="rb-square" @mousedown="rbSquareMouseDown" />
             <textarea ref="inputBox"
                       id="inputBox"
                       class="input-box"
@@ -174,6 +174,9 @@
                       :spellcheck="spellcheck"></textarea>
           </div>
         </div>
+
+        <!-- Drag Fill Overlay -->
+        <div v-if="dragFillActive && dragFillEnd" ref="dragFillOverlay" class="drag-fill-overlay" />
 
         <!-- Date Picker -->
         <div ref="dpContainer" v-show="showDatePicker" style="z-index:20; position:fixed">
@@ -440,6 +443,11 @@ export default defineComponent({
       autocompleteInputs: [],
       autocompleteSelect: -1,
 
+      dragFillActive: false,       // true when drag-fill is in progress
+      dragFillStart: null,         // {rowPos, colPos} of source cell
+      dragFillEnd: null,           // {rowPos, colPos} of current drag position
+      dragFillDirection: null,     // 'horizontal' or 'vertical'
+
       errmsg: {},
       rowerr: {},
       tip: '',
@@ -599,6 +607,12 @@ export default defineComponent({
     this.removeEventListener()
   },
   beforeUnmount () {
+    // Remove drag-fill event listeners if still active
+    if (this.dragFillActive) {
+      window.removeEventListener('mousemove', this.rbSquareMouseMove)
+      window.removeEventListener('mouseup', this.rbSquareMouseUp)
+      this.dragFillActive = false
+    }
     this.removeEventListener()
   },
   mounted () {
@@ -1383,6 +1397,12 @@ export default defineComponent({
     winKeydown (e) {
       if (e.altKey) this.systable.classList.add('alt')
       if (!this.mousein && !this.focused) return
+      // Cancel drag-fill on ESC
+      if (this.dragFillActive && e.keyCode === 27) {
+        this.cancelDragFill()
+        e.preventDefault()
+        return
+      }
       if (e.ctrlKey || e.metaKey)
         switch (e.keyCode) {
           case 90: // z
@@ -2587,6 +2607,231 @@ export default defineComponent({
         this.showDatePickerDiv()
       }
     },
+    rbSquareMouseDown (e) {
+      e.preventDefault()
+      e.stopPropagation()
+
+      // Don't start drag-fill on readonly cells
+      if (this.currentField?.readonly) return
+
+      // Initialize drag-fill state
+      this.dragFillActive = true
+      this.dragFillStart = {
+        rowPos: this.currentRowPos,
+        colPos: this.currentColPos,
+        absRowPos: this.pageTop + this.currentRowPos
+      }
+      this.dragFillEnd = { ...this.dragFillStart }
+      this.dragFillDirection = null
+
+      // Add window event listeners
+      window.addEventListener('mousemove', this.rbSquareMouseMove)
+      window.addEventListener('mouseup', this.rbSquareMouseUp)
+      
+      // Emit drag-fill-start event
+      this.$emit('drag-fill-start', {
+        source: {
+          rowPos: this.dragFillStart.absRowPos,
+          colPos: this.dragFillStart.colPos,
+          value: this.currentCell.textContent,
+          field: this.currentField.name,
+          record: this.currentRecord
+        }
+      })
+
+
+    },
+    rbSquareMouseMove (e) {
+      if (!this.dragFillActive) return
+
+      // Get the cell under the mouse cursor
+      const target = document.elementFromPoint(e.clientX, e.clientY)
+      if (!target) return
+
+      // Find the closest TD cell element
+      let cell = target.closest('td')
+      if (!cell || !cell.parentElement) return
+
+      // Skip if it's a header cell or row number cell
+      if (cell.parentElement.parentElement !== this.recordBody) return
+
+      // Calculate the row and column position
+      const row = cell.parentElement
+      const rowPos = Array.from(this.recordBody.children).indexOf(row)
+      const colPos = Array.from(row.children).indexOf(cell) - 1 // -1 for row number column
+
+      if (rowPos < 0 || colPos < 0) return
+
+      const absRowPos = this.pageTop + rowPos
+
+      // Determine direction on first move
+      if (!this.dragFillDirection) {
+        const rowDiff = Math.abs(absRowPos - this.dragFillStart.absRowPos)
+        const colDiff = Math.abs(colPos - this.dragFillStart.colPos)
+
+        if (rowDiff > 0 || colDiff > 0) {
+          this.dragFillDirection = rowDiff >= colDiff ? 'vertical' : 'horizontal'
+        }
+      }
+
+      // Lock to direction
+      if (this.dragFillDirection === 'vertical') {
+        this.dragFillEnd = {
+          rowPos: rowPos,
+          colPos: this.dragFillStart.colPos,
+          absRowPos: absRowPos
+        }
+      } else if (this.dragFillDirection === 'horizontal') {
+        this.dragFillEnd = {
+          rowPos: this.dragFillStart.rowPos,
+          colPos: colPos,
+          absRowPos: this.dragFillStart.absRowPos
+        }
+      }
+
+      // Emit drag-fill-move event
+      this.$emit('drag-fill-move', {
+        source: {
+          rowPos: this.dragFillStart.absRowPos,
+          colPos: this.dragFillStart.colPos,
+          value: this.currentCell.textContent,
+          field: this.currentField.name
+        },
+        range: {
+          startRow: Math.min(this.dragFillStart.absRowPos, this.dragFillEnd.absRowPos),
+          endRow: Math.max(this.dragFillStart.absRowPos, this.dragFillEnd.absRowPos),
+          startCol: Math.min(this.dragFillStart.colPos, this.dragFillEnd.colPos),
+          endCol: Math.max(this.dragFillStart.colPos, this.dragFillEnd.colPos)
+        },
+        direction: this.dragFillDirection
+      })
+
+      // Update visual overlay
+      this.$nextTick(() => {
+        this.updateDragFillOverlay()
+      })
+    },
+    updateDragFillOverlay () {
+      if (!this.dragFillActive || !this.dragFillEnd || !this.$refs.dragFillOverlay) return
+
+      const tableRect = this.systable.getBoundingClientRect()
+
+      // Get start and end cells
+      const startRowPos = Math.min(this.dragFillStart.rowPos, this.dragFillEnd.rowPos)
+      const endRowPos = Math.max(this.dragFillStart.rowPos, this.dragFillEnd.rowPos)
+      const startColPos = Math.min(this.dragFillStart.colPos, this.dragFillEnd.colPos)
+      const endColPos = Math.max(this.dragFillStart.colPos, this.dragFillEnd.colPos)
+
+      // Ensure rows are in view
+      if (startRowPos >= this.recordBody.children.length || endRowPos >= this.recordBody.children.length) return
+
+      const startRow = this.recordBody.children[startRowPos]
+      const endRow = this.recordBody.children[endRowPos]
+      if (!startRow || !endRow) return
+
+      const startCell = startRow.children[startColPos + 1] // +1 for row number column
+      const endCell = endRow.children[endColPos + 1]
+      if (!startCell || !endCell) return
+
+      const startRect = startCell.getBoundingClientRect()
+      const endRect = endCell.getBoundingClientRect()
+
+      // Position overlay
+      const overlay = this.$refs.dragFillOverlay
+      overlay.style.left = (startRect.left - tableRect.left) + 'px'
+      overlay.style.top = (startRect.top - tableRect.top) + 'px'
+      overlay.style.width = (endRect.right - startRect.left) + 'px'
+      overlay.style.height = (endRect.bottom - startRect.top) + 'px'
+    },
+    rbSquareMouseUp (e) {
+      e.preventDefault()
+      e.stopPropagation()
+
+      // Remove window event listeners
+      window.removeEventListener('mousemove', this.rbSquareMouseMove)
+      window.removeEventListener('mouseup', this.rbSquareMouseUp)
+
+      if (!this.dragFillActive) return
+
+      // Calculate the fill range
+      const startRow = Math.min(this.dragFillStart.absRowPos, this.dragFillEnd.absRowPos)
+      const endRow = Math.max(this.dragFillStart.absRowPos, this.dragFillEnd.absRowPos)
+      const startCol = Math.min(this.dragFillStart.colPos, this.dragFillEnd.colPos)
+      const endCol = Math.max(this.dragFillStart.colPos, this.dragFillEnd.colPos)
+
+      // Get source value
+      const sourceValue = this.table[this.dragFillStart.absRowPos][this.currentField.name]
+
+      // Fill cells (excluding the source cell itself)
+      const filledCells = []
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          // Skip source cell
+          if (row === this.dragFillStart.absRowPos && col === this.dragFillStart.colPos) continue
+
+          // Skip readonly fields
+          const field = this.fields[col]
+          if (field.readonly) continue
+
+          // Update cell
+          this.updateCell(row, field, sourceValue)
+
+          filledCells.push({
+            rowPos: row,
+            colPos: col,
+            field: field.name,
+            value: sourceValue
+          })
+        }
+      }
+
+      // Emit drag-fill-end event
+      this.$emit('drag-fill-end', {
+        source: {
+          rowPos: this.dragFillStart.absRowPos,
+          colPos: this.dragFillStart.colPos,
+          value: sourceValue,
+          field: this.currentField.name,
+          record: this.table[this.dragFillStart.absRowPos]
+        },
+        range: {
+          startRow: startRow,
+          endRow: endRow,
+          startCol: startCol,
+          endCol: endCol
+        },
+        direction: this.dragFillDirection,
+        filledCells: filledCells
+      })
+
+      // Reset drag state
+      this.dragFillActive = false
+      this.dragFillStart = null
+      this.dragFillEnd = null
+      this.dragFillDirection = null
+    },
+    cancelDragFill () {
+      if (!this.dragFillActive) return
+
+      // Remove event listeners
+      window.removeEventListener('mousemove', this.rbSquareMouseMove)
+      window.removeEventListener('mouseup', this.rbSquareMouseUp)
+
+      // Emit cancel event
+      this.$emit('drag-fill-cancel', {
+        source: {
+          rowPos: this.dragFillStart.absRowPos,
+          colPos: this.dragFillStart.colPos,
+          field: this.currentField.name
+        }
+      })
+
+      // Reset state
+      this.dragFillActive = false
+      this.dragFillStart = null
+      this.dragFillEnd = null
+      this.dragFillDirection = null
+    },
     inputCellWrite (setText, colPos, recPos) {
       let field = this.currentField
       if (typeof colPos !== 'undefined') field = this.fields[colPos]
@@ -3010,6 +3255,13 @@ input:focus, input:active:focus, input.active:focus {
   bottom: -3px;
   right: -2px;
   cursor: crosshair;
+}
+.drag-fill-overlay {
+  position: absolute;
+  border: 2px solid rgb(108, 143, 108);
+  background-color: rgba(108, 143, 108, 0.1);
+  pointer-events: none;
+  z-index: 10;
 }
 .input-box {
   opacity: 0;
