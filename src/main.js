@@ -4,9 +4,11 @@ import VueExcelEditor from './VueExcelEditor.vue'
 import VueExcelColumn from './VueExcelColumn.vue'
 
 export default {
-  install (Vue) {
+  install (app) {
 
-    Vue.component('vue-excel-editor', VueExcelEditor)
-    Vue.component('vue-excel-column', VueExcelColumn)
+    app.component('vue-excel-editor', VueExcelEditor)
+    app.component('vue-excel-column', VueExcelColumn)
   }
 }
+
+export { VueExcelEditor, VueExcelColumn }

@@ -46,5 +46,12 @@
   "bugs": {
     "url": "https://github.com/cscan/vue3-excel-editor/issues"
   },
-  "homepage": "https://github.com/cscan/vue3-excel-editor"
+  "homepage": "https://github.com/cscan/vue3-excel-editor",
+  "types": "./src/main.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/main.d.ts",
+      "import": "./src/main.js"
+    }
+  }
 }
