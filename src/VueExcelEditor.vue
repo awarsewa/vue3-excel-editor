@@ -157,7 +157,7 @@
         <div v-show="textTip" ref="texttip" class="text-tip">{{ textTip }}</div>
 
         <!-- Editor Square -->
-        <div v-show="focused" ref="inputSquare" class="input-square" @mousedown="inputSquareClick">
+        <div v-show="focused && !focusOffscreen" ref="inputSquare" class="input-square" @mousedown="inputSquareClick">
           <div style="position: relative; height: 100%; padding: 2px 2px 1px">
             <div class="rb-square" @mousedown="rbSquareMouseDown" />
             <textarea ref="inputBox"
@@ -437,6 +437,7 @@ export default defineComponent({
       currentColPos: 0,             // focusing pos of column/field
       currentField: null,           // focusing field object
       currentCell: null,
+      currentRowNumCell: null,      // the row-number <td> currently marked .focus
       inputBox: null,
       inputBoxShow: 0,
       inputSquare: null,
@@ -448,6 +449,7 @@ export default defineComponent({
       dragFillEnd: null,           // {rowPos, colPos} of current drag position
       dragFillDirection: null,     // 'horizontal' or 'vertical'
       dragFillLastPoint: null,     // {x, y} last known cursor position, used to re-target after scrolling
+      focusOffscreen: false,       // true when the focused row has scrolled out of the rendered page
 
       errmsg: {},
       rowerr: {},
@@ -594,7 +596,7 @@ export default defineComponent({
         this.frontdrop.style.width = rect.width + 'px'
       }
     },
-    pageTop (newVal) {
+    pageTop (newVal, oldVal) {
       this.$emit('page-changed', newVal, newVal + this.pageSize - 1)
       // Row virtualization reassigns which absolute row occupies each rendered
       // <tr>, so an in-progress drag-fill must re-target against the cursor's
@@ -1232,7 +1234,10 @@ export default defineComponent({
       else {
         this.vScroller.buttonTop = ratio * (this.vScroller.height - this.vScroller.buttonHeight)
         this.$refs.vScrollButton.style.marginTop = this.vScroller.buttonTop + 'px'
+        const oldPageTop = this.pageTop
+        const oldRowPos = this.currentRowPos
         this.pageTop = Math.round((this.table.length - this.pageSize) * ratio)
+        this.syncFocusAfterPageJump(oldPageTop, oldRowPos)
       }
     },
     vsbMouseDown (e) {
@@ -1255,7 +1260,10 @@ export default defineComponent({
       this.vScroller.mouseY = 0
       if (!this.noPaging) {
         const ratio = this.vScroller.buttonTop / (this.vScroller.height - this.vScroller.buttonHeight)
+        const oldPageTop = this.pageTop
+        const oldRowPos = this.currentRowPos
         this.pageTop = Math.round((this.table.length - this.pageSize) * ratio)
+        this.syncFocusAfterPageJump(oldPageTop, oldRowPos)
       }
       this.vScroller.runner = ''
       const instance = getCurrentInstance()
@@ -1369,7 +1377,10 @@ export default defineComponent({
       if (e.deltaY > 1 * this.wheelSensitivity && this.pageTop + this.pageSize < this.table.length) adjust = 1
       else if (e.deltaY < -1 * this.wheelSensitivity && this.pageTop > 0) adjust = -1
       if (adjust) {
+        const oldPageTop = this.pageTop
+        const oldRowPos = this.currentRowPos
         this.pageTop += adjust
+        this.syncFocusAfterPageJump(oldPageTop, oldRowPos)
         setTimeout(this.calVScroll)
         if (this.$refs.vScrollButton) {
           this.$refs.vScrollButton.classList.add('focus')
@@ -2566,6 +2577,7 @@ export default defineComponent({
       this.currentColPos = colPos
       this.currentCell = cell
       this.currentRecord = this.table[top + rowPos]
+      this.focusOffscreen = false
       this.lastRecord = this.currentRecord
 
       this.$emit('cell-focus', {rowPos, colPos, cell, record: this.currentRecord})
@@ -2586,9 +2598,58 @@ export default defineComponent({
         this.inputBox.focus()
         this.focused = true
         row.children[0].classList.add('focus')
+        this.currentRowNumCell = row.children[0]
         this.labelTr.children[colPos + 1].classList.add('focus')
       }
       return true
+    },
+    // Call right after directly assigning this.pageTop from wheel-scroll or the
+    // scrollbar (never from moveInputSquare's own paging, which already keeps
+    // currentRowPos in sync itself - compensating here too would double-shift it).
+    syncFocusAfterPageJump (oldPageTop, oldRowPos) {
+      const delta = this.pageTop - oldPageTop
+      if (!delta || !this.focused || !this.currentField) return
+      const newRowPos = oldRowPos - delta
+      this.$nextTick(() => this.repositionFocusSquare(newRowPos))
+    },
+    // Slides the focus square to whichever slot now holds the same absolute
+    // row after a pageTop jump, or hides it while that row is scrolled out of
+    // the rendered window. Clears/sets 'focus' via the tracked element refs
+    // (not a passed-in old rowPos) so a burst of rapid wheel events - each
+    // scheduling its own deferred reposition - can't leave a stale highlight
+    // behind on an intermediate slot from an earlier, already-superseded call.
+    repositionFocusSquare (newRowPos) {
+      if (!this.focused || !this.currentField) return
+
+      this.currentRowNumCell?.classList.remove('focus')
+      this.currentCell?.classList.remove('focus')
+
+      const newRow = this.recordBody.children[newRowPos]
+      if (!newRow) {
+        this.focusOffscreen = true
+        this.currentRowPos = newRowPos
+        return
+      }
+
+      const cell = newRow.children[this.currentColPos + 1]
+      if (!cell) return
+
+      const cellRect = cell.getBoundingClientRect()
+      const tableRect = this.systable.getBoundingClientRect()
+      this.focusOffscreen = false
+      this.squareSavedLeft = this.tableContent.scrollLeft
+      this.inputSquare.style.marginLeft = 0
+      this.inputSquare.style.left = (cellRect.left - tableRect.left - 1) + 'px'
+      this.inputSquare.style.top = (cellRect.top - tableRect.top - 1) + 'px'
+      this.inputSquare.style.width = (cellRect.width + 1) + 'px'
+      this.inputSquare.style.height = (cellRect.height + 1) + 'px'
+
+      this.currentRowPos = newRowPos
+      this.currentCell = cell
+      this.lastCell = cell
+      this.currentRowNumCell = newRow.children[0]
+      this.currentRowNumCell.classList.add('focus')
+      cell.classList.add('focus')
     },
     inputSquareClick () {
       if (!this.currentField.readonly && !this.inputBoxShow && this.currentField.type !== 'select') {
@@ -2881,7 +2942,7 @@ export default defineComponent({
 
       this.$emit('cell-blur', {rowPos: this.currentRowPos, colPos: this.currentColPos, cell: this.lastCell, record: this.lastRecord})
   
-      if (this.currentRowPos !== -1 && this.currentRowPos < this.recordBody.children.length) {
+      if (this.currentRowPos >= 0 && this.currentRowPos < this.recordBody.children.length) {
         this.recordBody.children[this.currentRowPos].children[0].classList.remove('focus')
         this.labelTr.children[this.currentColPos + 1].classList.remove('focus')
       }
