@@ -447,6 +447,7 @@ export default defineComponent({
       dragFillStart: null,         // {rowPos, colPos} of source cell
       dragFillEnd: null,           // {rowPos, colPos} of current drag position
       dragFillDirection: null,     // 'horizontal' or 'vertical'
+      dragFillLastPoint: null,     // {x, y} last known cursor position, used to re-target after scrolling
 
       errmsg: {},
       rowerr: {},
@@ -595,6 +596,15 @@ export default defineComponent({
     },
     pageTop (newVal) {
       this.$emit('page-changed', newVal, newVal + this.pageSize - 1)
+      // Row virtualization reassigns which absolute row occupies each rendered
+      // <tr>, so an in-progress drag-fill must re-target against the cursor's
+      // last known position once the page has re-rendered.
+      if (this.dragFillActive) {
+        this.$nextTick(() => {
+          if (this.dragFillLastPoint) this.updateDragFillTarget(this.dragFillLastPoint.x, this.dragFillLastPoint.y)
+          else this.updateDragFillOverlay()
+        })
+      }
     },
     pageSize (newVal) {
       this.$emit('page-changed', this.pageTop, this.pageTop + newVal - 1)
@@ -1346,6 +1356,8 @@ export default defineComponent({
         }
       }
       this.hScroller.lastLeft = this.tableContent.scrollLeft
+
+      if (this.dragFillActive) this.updateDragFillOverlay()
     },
     winScroll () {
       this.showDatePicker = false
@@ -2623,6 +2635,7 @@ export default defineComponent({
       }
       this.dragFillEnd = { ...this.dragFillStart }
       this.dragFillDirection = null
+      this.dragFillLastPoint = { x: e.clientX, y: e.clientY }
 
       // Add window event listeners
       window.addEventListener('mousemove', this.rbSquareMouseMove)
@@ -2643,9 +2656,14 @@ export default defineComponent({
     },
     rbSquareMouseMove (e) {
       if (!this.dragFillActive) return
+      this.dragFillLastPoint = { x: e.clientX, y: e.clientY }
+      this.updateDragFillTarget(e.clientX, e.clientY)
+    },
+    updateDragFillTarget (clientX, clientY) {
+      if (!this.dragFillActive) return
 
-      // Get the cell under the mouse cursor
-      const target = document.elementFromPoint(e.clientX, e.clientY)
+      // Get the cell under the cursor's last known position
+      const target = document.elementFromPoint(clientX, clientY)
       if (!target) return
 
       // Find the closest TD cell element
@@ -2714,16 +2732,28 @@ export default defineComponent({
     updateDragFillOverlay () {
       if (!this.dragFillActive || !this.dragFillEnd || !this.$refs.dragFillOverlay) return
 
+      const overlay = this.$refs.dragFillOverlay
       const tableRect = this.systable.getBoundingClientRect()
 
-      // Get start and end cells
-      const startRowPos = Math.min(this.dragFillStart.rowPos, this.dragFillEnd.rowPos)
-      const endRowPos = Math.max(this.dragFillStart.rowPos, this.dragFillEnd.rowPos)
+      // Derive on-screen row positions from the absolute row index and the
+      // current pageTop rather than the rowPos captured when the drag started
+      // or last moved: row virtualization re-keys rendered <tr> elements by
+      // their slot (0..pageSize-1), so the same slot can point at a different
+      // absolute row once the page has scrolled.
+      const startAbsRow = Math.min(this.dragFillStart.absRowPos, this.dragFillEnd.absRowPos)
+      const endAbsRow = Math.max(this.dragFillStart.absRowPos, this.dragFillEnd.absRowPos)
       const startColPos = Math.min(this.dragFillStart.colPos, this.dragFillEnd.colPos)
       const endColPos = Math.max(this.dragFillStart.colPos, this.dragFillEnd.colPos)
 
-      // Ensure rows are in view
-      if (startRowPos >= this.recordBody.children.length || endRowPos >= this.recordBody.children.length) return
+      // Clip to the page currently rendered - rows scrolled out of view have no DOM to measure
+      const firstRenderedRow = this.pageTop
+      const lastRenderedRow = this.pageTop + this.recordBody.children.length - 1
+      if (endAbsRow < firstRenderedRow || startAbsRow > lastRenderedRow) {
+        overlay.style.display = 'none'
+        return
+      }
+      const startRowPos = Math.max(startAbsRow, firstRenderedRow) - this.pageTop
+      const endRowPos = Math.min(endAbsRow, lastRenderedRow) - this.pageTop
 
       const startRow = this.recordBody.children[startRowPos]
       const endRow = this.recordBody.children[endRowPos]
@@ -2737,7 +2767,7 @@ export default defineComponent({
       const endRect = endCell.getBoundingClientRect()
 
       // Position overlay
-      const overlay = this.$refs.dragFillOverlay
+      overlay.style.display = ''
       overlay.style.left = (startRect.left - tableRect.left) + 'px'
       overlay.style.top = (startRect.top - tableRect.top) + 'px'
       overlay.style.width = (endRect.right - startRect.left) + 'px'
@@ -2809,6 +2839,7 @@ export default defineComponent({
       this.dragFillStart = null
       this.dragFillEnd = null
       this.dragFillDirection = null
+      this.dragFillLastPoint = null
     },
     cancelDragFill () {
       if (!this.dragFillActive) return
@@ -2831,6 +2862,7 @@ export default defineComponent({
       this.dragFillStart = null
       this.dragFillEnd = null
       this.dragFillDirection = null
+      this.dragFillLastPoint = null
     },
     inputCellWrite (setText, colPos, recPos) {
       let field = this.currentField
