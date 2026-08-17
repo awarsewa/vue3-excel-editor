@@ -50,7 +50,9 @@
                   @mousedown="headerClick($event, p)"
                   @contextmenu.prevent="panelFilterClick(item)">
                 <div :class="{'filter-sign': columnFilter[p]}">
-                  <span :class="{'table-col-header': !noHeaderEdit}" v-html="headerLabel(item.label, item)"></span>
+                  <slot :name="`header-${item.name}`" :field="item" :label="item.label">
+                    <span :class="{'table-col-header': !noHeaderEdit}" v-html="headerLabel(item.label, item)"></span>
+                  </slot>
                 </div>
                 <div class="col-sep"
                     @mousedown="colSepMouseDown"

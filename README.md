@@ -393,6 +393,24 @@ You may specify the column label in vue-excel-column label prop. However, it wil
     this.$forceUpdate()  // remember to call vue update to reflesh the display
 ```
 
+### Custom header content
+
+By default the column header just shows the label text. If you need to put a button or any other custom element in a column's header, use the `header-<field>` scoped slot on `vue-excel-editor`, where `<field>` is that column's `field` name. The slot receives `{ field, label }` and falls back to the normal label when not provided, so you only need to define it for the columns you want to customize.
+
+```html
+<vue-excel-editor v-model="jsondata">
+    <vue-excel-column field="user" label="User ID" type="string" width="80px" />
+    <vue-excel-column field="name" label="Name" type="string" width="150px" />
+
+    <template #header-user="{ label }">
+        {{ label }}
+        <button @mousedown.stop @click="showUserHelp">?</button>
+    </template>
+</vue-excel-editor>
+```
+
+Note: the header `<th>` already has its own `mousedown` handler for sorting/renaming, so add `@mousedown.stop` (as above) to any interactive element you place in the slot to stop it from also triggering a column sort.
+
 ### Change the column invisibility
 
 Same as column label, you may make the column visible/invisible in vue-excel-column label prop. However, it will persist after mounted. If you want to change it after mounted, you may try to update the variable fields. For example
