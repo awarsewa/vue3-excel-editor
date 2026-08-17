@@ -38,6 +38,7 @@ export default {
     sort: {type: Function, default: null},
     sorting: {type: Function, default: null},
     noSorting: {type: Boolean, default: null},
+    noResize: {type: Boolean, default: null},
     masking: {type: String, default: '•'},
     placeholder: {type: String, default: ''},
     color: {type: [String, Function], default: null},
@@ -257,6 +258,7 @@ export default {
         sort: this.sort,
         sorting: this.sorting,
         noSorting: this.noSorting !== null ? this.noSorting : self.$parent.noSorting,
+        noResize: this.noResize !== null ? this.noResize : self.$parent.noResize,
 
         keyField: this.keyField,
         sticky: this.sticky,

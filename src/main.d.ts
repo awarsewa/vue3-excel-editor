@@ -54,6 +54,7 @@ export interface VueExcelEditorProps {
   noFinding?: boolean;
   noFindingNext?: boolean;
   noSorting?: boolean;
+  noResize?: boolean;
   noMassUpdate?: boolean;
   filterRow?: boolean;
   freeSelect?: boolean;
@@ -116,6 +117,7 @@ export interface VueExcelColumnProps {
   sort?: ((a: any, b: any) => number) | null;
   sorting?: ((field: string, dir: number) => void) | null;
   noSorting?: boolean | null;
+  noResize?: boolean | null;
   masking?: string;
   placeholder?: string;
   color?: string | ((value: any, record: any) => string) | null;

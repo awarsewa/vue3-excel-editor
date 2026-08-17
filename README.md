@@ -104,6 +104,7 @@ In your template
 | disable-panel-filter  | Optional  | Boolean  | Hide the filter panel |
 | no-mouse-scroll       | Optional  | Boolean  | Disable the vertical scrolling by mouse |
 | no-sorting            | Optional  | Boolean  | Disable the sorting |
+| no-resize             | Optional  | Boolean  | Disable column width resizing, default is false |
 | no-mass-update        | Optional  | Boolean  | Disable mass update of selected records |
 
 ### Prop Component: vue-excel-column
@@ -139,6 +140,7 @@ In your template
 | to-value       | Optional  | Function          | The function to convert from edit-text to object value |
 | placeholder    | Optional  | String            | The custom text if the field is null |
 | no-sorting     | Optional  | Boolean           | Disable the sorting of the column |
+| no-resize      | Optional  | Boolean           | Disable width resizing of the column, default is parent prop: no-resize |
 
 @ - Function can return a promise
 
@@ -256,6 +258,36 @@ AOA = Array of Array, i.e. [[...], [...]]
 AOO = Array of Object, i.e. [{...}, {...}]
 
 I suppose you try to read all the above variables only. Do not try to modify any value of the above variables, unless you deeply walk through the codes and know the consequences.
+
+## Theming
+
+The component exposes its colors as CSS custom properties, so you can restyle it from your own stylesheet without needing `::v-deep` or `!important`. Set them on the `.vue-excel-editor` element (or any ancestor of it) from a regular, non-scoped stylesheet:
+
+```css
+.vue-excel-editor {
+  --vee-header-bg: #222;
+  --vee-header-color: white;
+  --vee-cell-bg: #fafafa;
+  --vee-selection-frame-color: #0d6efd;
+}
+```
+
+| Variable                     | Default                   | Affects |
+| :---                         | :---                      | :---    |
+| `--vee-header-bg`            | `#e9ecef`                 | Column header row background |
+| `--vee-header-color`         | `inherit`                 | Column header text color |
+| `--vee-header-border-color`  | `lightgray`                | Column header borders (incl. the filter row) |
+| `--vee-cell-bg`               | `white`                   | Data cell background |
+| `--vee-cell-color`            | `inherit`                 | Data cell text color |
+| `--vee-cell-border-color`     | `lightgray`                | Data cell borders |
+| `--vee-firstcol-bg`           | `var(--vee-header-bg)`    | Row-number column background (the leftmost column) |
+| `--vee-firstcol-color`        | `var(--vee-header-color)` | Row-number column text color |
+| `--vee-selection-frame-color` | `rgb(108, 143, 108)`      | Focused-cell frame border, drag-fill handle and overlay border |
+| `--vee-selection-fill-color`  | `rgba(108, 143, 108, 0.1)`| Drag-fill overlay background |
+| `--vee-selected-row-bg`       | `#bbb`                    | Selected row highlight |
+| `--vee-focus-border-color`    | `rgb(61, 85, 61)`         | Focus border accent on the header/row-number cell |
+
+`--vee-firstcol-bg` and `--vee-firstcol-color` default to the header variables, so overriding just the header colors also updates the row-number column, unless you override the first-col variables explicitly too.
 
 ## Example
 

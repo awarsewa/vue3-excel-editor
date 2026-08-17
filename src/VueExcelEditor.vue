@@ -45,7 +45,8 @@
                   :class="{'sort-asc-sign': sortPos==p && sortDir==1,
                           'sort-des-sign': sortPos==p && sortDir==-1,
                           'sticky-column': item.sticky,
-                          'no-sorting': item.noSorting}"
+                          'no-sorting': item.noSorting,
+                          'no-resize': item.noResize}"
                   :style="{left: item.left}"
                   @mousedown="headerClick($event, p)"
                   @contextmenu.prevent="panelFilterClick(item)">
@@ -335,6 +336,7 @@ export default defineComponent({
     noFinding: {type: Boolean, default: false},
     noFindingNext: {type: Boolean, default: false},
     noSorting: {type: Boolean, default: false},
+    noResize: {type: Boolean, default: false},
     noMassUpdate: {type: Boolean, default: false},
     filterRow: {type: Boolean, default: false},
     freeSelect: {type: Boolean, default: false},
@@ -766,6 +768,7 @@ export default defineComponent({
         initStyle: 'left',
         invisible: false,
         readonly: this.readonly,
+        noResize: this.noResize,
         pos: 0,
         options: null,
         summary: null,
@@ -1658,6 +1661,10 @@ export default defineComponent({
       // this.sep.curCol = this.colgroupTr.children[Array.from(this.labelTr.children).indexOf(e.target.parentElement)]
       this.sep.curCol = this.colgroupTr.children[index - (this.noNumCol ? 1: 0)]
       this.sep.curField = this.fields[index - 1]
+      if (this.sep.curField && this.sep.curField.noResize) {
+        delete this.sep
+        return
+      }
       // this.sep.nxtCol = this.sep.curCol.nextElementSibling
       this.sep.pageX = e.pageX
       let padding = 0
@@ -1675,7 +1682,8 @@ export default defineComponent({
     },
     colSepMouseOver (e) {
       if (e.target.classList.contains('col-sep')) {
-        e.target.style.borderRight = '5px solid #cccccc'
+        if (!e.target.parentElement.classList.contains('no-resize'))
+          e.target.style.borderRight = '5px solid #cccccc'
         e.target.style.height = this.systable.getBoundingClientRect().height + 'px'
         if (this.allowAddCol)
           e.target.children[0].style.display = 'block'
@@ -3301,7 +3309,7 @@ input:focus, input:active:focus, input.active:focus {
   position: absolute;
   padding: 0;
   z-index: 4;
-  border: 2px solid rgb(108, 143, 108);
+  border: 2px solid var(--vee-selection-frame-color);
   /* transition: all 0.04s linear; */
 }
 .no-transition {
@@ -3345,7 +3353,7 @@ input:focus, input:active:focus, input.active:focus {
   border-left: 2px solid white;
   border-bottom: 0;
   border-right: 0;
-  background-color:rgb(108, 143, 108);
+  background-color: var(--vee-selection-frame-color);
   position: absolute;
   bottom: -3px;
   right: -2px;
@@ -3353,8 +3361,8 @@ input:focus, input:active:focus, input.active:focus {
 }
 .drag-fill-overlay {
   position: absolute;
-  border: 2px solid rgb(108, 143, 108);
-  background-color: rgba(108, 143, 108, 0.1);
+  border: 2px solid var(--vee-selection-frame-color);
+  background-color: var(--vee-selection-fill-color);
   pointer-events: none;
   z-index: 10;
 }
@@ -3371,6 +3379,20 @@ input:focus, input:active:focus, input.active:focus {
   white-space: nowrap;
   overflow: hidden;
   background: white;
+}
+.vue-excel-editor {
+  --vee-header-bg: #e9ecef;
+  --vee-header-color: inherit;
+  --vee-header-border-color: lightgray;
+  --vee-cell-bg: white;
+  --vee-cell-color: inherit;
+  --vee-cell-border-color: lightgray;
+  --vee-firstcol-bg: var(--vee-header-bg);
+  --vee-firstcol-color: var(--vee-header-color);
+  --vee-selection-frame-color: rgb(108, 143, 108);
+  --vee-selection-fill-color: rgba(108, 143, 108, 0.1);
+  --vee-selected-row-bg: #bbb;
+  --vee-focus-border-color: rgb(61, 85, 61);
 }
 .component-content {
   display: flex;
@@ -3439,11 +3461,12 @@ input:focus, input:active:focus, input.active:focus {
   margin-left: 0 !important;
 }
 .systable tbody tr {
-  background-color: white;
+  background-color: var(--vee-cell-bg);
+  color: var(--vee-cell-color);
   text-align: left;
 }
 .systable tr.select td {
-  background-color: #bbb !important;
+  background-color: var(--vee-selected-row-bg) !important;
 }
 .systable th, .systable td {
   vertical-align: bottom;
@@ -3454,7 +3477,7 @@ input:focus, input:active:focus, input.active:focus {
   border-left: 0;
 }
 .systable th:not(:last-child) {
-  border-right: 1px solid lightgray;
+  border-right: 1px solid var(--vee-header-border-color);
 }
 .systable tbody td {
   cursor: cell;
@@ -3483,13 +3506,13 @@ input:focus, input:active:focus, input.active:focus {
   background-position: right 0px top 0px !important;
 }
 .systable tbody tr:not(:first-child) td {
-  border-top: 1px solid lightgray;
+  border-top: 1px solid var(--vee-cell-border-color);
 }
 .systable tbody tr:first-child td {
   border-top: 1px solid transparent;
 }
 .systable td:not(:last-child) {
-  border-right: 1px solid lightgray;
+  border-right: 1px solid var(--vee-cell-border-color);
 }
 .systable thead th, .systable thead td {
   padding: 0.4rem 0.3rem;
@@ -3498,10 +3521,11 @@ input:focus, input:active:focus, input.active:focus {
   height: 29px;
   position: sticky;
   z-index: 5;
-  border-bottom: 1px solid lightgray;
+  border-bottom: 1px solid var(--vee-header-border-color);
 }
 .systable thead th {
-  background-color: #e9ecef;
+  background-color: var(--vee-header-bg);
+  color: var(--vee-header-color);
   cursor: s-resize;
   z-index: 6;
 }
@@ -3516,10 +3540,10 @@ input:focus, input:active:focus, input.active:focus {
   text-overflow: ellipsis;
 }
 .systable th.focus {
-  border-bottom: 1px solid rgb(61, 85, 61) !important;
+  border-bottom: 1px solid var(--vee-focus-border-color) !important;
 }
 .systable td.first-col.focus {
-  border-right: 1px solid rgb(61, 85, 61) !important;
+  border-right: 1px solid var(--vee-focus-border-color) !important;
 }
 .systable tbody td.grouping {
   background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAAAxUlEQVQ4EbWSXQoCMQyEuyqCB1K8/6MeSNCt63zQlrRNxBcDZaeTye92Sb7tRF90TsX90Pem8y739kHo2SJybxxguMmiBAg3o7bY0Cl9S9AJo0uUwKvocemgzCSx8yGEtxwYbh34DcdVhyXZCjWgJsFH8KjJZK2/SrCzUXzsvOUS7cDTuhwd8Eh+GeEl3dhVZsZoiWf5attP4bvOtEQ6mJ5nEdpqYIInbbSDun3FNPO4/71EytqKFreWANEIzJyNEmx30lwfVOglX/lm6bgAAAAASUVORK5CYII=');
@@ -3544,7 +3568,8 @@ input:focus, input:active:focus, input.active:focus {
   background-position: right 5px top 8px;
 }
 .systable .first-col {
-  background:#e9ecef;
+  background: var(--vee-firstcol-bg);
+  color: var(--vee-firstcol-color);
   width: 40px;
   position: sticky;
   left: 0;
@@ -3601,9 +3626,9 @@ input:focus, input:active:focus, input.active:focus {
 }
 .systable tfoot .row-summary.first-col {
   height: 25px;
-  border-top: 1px solid lightgray;
-  border-right: 1px solid lightgray;
-  background: #e9ecef;
+  border-top: 1px solid var(--vee-cell-border-color);
+  border-right: 1px solid var(--vee-cell-border-color);
+  background: var(--vee-firstcol-bg);
   position: sticky;
   left: 0;
   top: auto;
@@ -3741,6 +3766,9 @@ a:disabled {
   cursor: col-resize;
   height: 100%;
   z-index: 15;
+}
+.systable th.no-resize .col-sep {
+  cursor: default;
 }
 .add-col-btn {
   display: none;
